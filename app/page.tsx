@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { FileSpreadsheet } from "lucide-react";
 
 const API_BASE = "http://localhost:8000";
 
@@ -21,11 +22,6 @@ type QueryResult = {
   truncated?: boolean;
   rows: Record<string, unknown>[];
 };
-
-type SchemaColumnDef = { column: string; type: string; description: string };
-type SchemaTable = { name: string; description: string; columns: SchemaColumnDef[] };
-type SchemaGroup = { source: string; description: string; tables: SchemaTable[] };
-type SchemaResponse = { groups: SchemaGroup[] };
 
 function downloadCsv(columns: string[], rows: Record<string, unknown>[]) {
   const escape = (val: unknown) => {
@@ -51,31 +47,25 @@ function downloadCsv(columns: string[], rows: Record<string, unknown>[]) {
 const BTN = "rounded-none border border-amber-500 text-amber-400 bg-black hover:bg-amber-950 hover:text-amber-300 text-xs uppercase tracking-wide font-medium";
 export default function QueryPage() {
   const skylineRef = useRef<SVGSVGElement>(null);
-  const [activeTab, setActiveTab] = useState<"query" | "dictionary" | "about">("query");
 
   const [query, setQuery] = useState("SELECT * FROM fact_hic LIMIT 10");
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const [schema, setSchema] = useState<SchemaResponse | null>(null);
-  const [schemaError, setSchemaError] = useState<string | null>(null);
-  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const [sqlQuestion, setSqlQuestion] = useState("");
+  const [sqlLoading, setSqlLoading] = useState(false);
+  const [sqlError, setSqlError] = useState<string | null>(null);
 
-const [nlQuestion, setNlQuestion] = useState("");
-const [nlLoading, setNlLoading] = useState(false);
-const [nlError, setNlError] = useState<string | null>(null);
-const [nlAnswer, setNlAnswer] = useState<{ answer: string; sql: string | null; rows: Record<string, unknown>[] | null } | null>(null);
+  const [answerQuestion, setAnswerQuestion] = useState("");
+  const [answerLoading, setAnswerLoading] = useState(false);
+  const [answerError, setAnswerError] = useState<string | null>(null);
+  const [answerResult, setAnswerResult] = useState<{ answer: string; sql: string | null; rows: Record<string, unknown>[] | null } | null>(null);
 
-  useEffect(() => {
-    fetch(`${API_BASE}/schema`)
-      .then((res) => res.json())
-      .then((data) => setSchema(data))
-      .catch(() => setSchemaError("Could not load schema"));
-  }, []);
 useEffect(() => {
     const svg = skylineRef.current;
-if (!svg) return;
+    if (!svg) return;
+    const svgEl = svg;
     const ns = "http://www.w3.org/2000/svg";
 
     function rect(x: number, y: number, w: number, h: number, fill: string) {
@@ -85,7 +75,7 @@ if (!svg) return;
       r.setAttribute("width", String(w));
       r.setAttribute("height", String(h));
       r.setAttribute("fill", fill);
-      svg.appendChild(r);
+      svgEl.appendChild(r)
     }
     function windows(x: number, y: number, w: number, h: number, tint: string) {
       for (let wy = y + 6; wy < y + h - 6; wy += 9) {
@@ -118,7 +108,7 @@ if (!svg) return;
       const p = document.createElementNS(ns, "polygon");
       p.setAttribute("points", points);
       p.setAttribute("fill", fill);
-      svg.appendChild(p);
+      svgEl.appendChild(p)
     };
     poly(`${dhX},90 ${dhX},65 ${dhX + 9},52 ${dhX + 15},64 ${dhX + 15},90`, "#0B8CC4");
     poly(`${dhX + 13},90 ${dhX + 13},58 ${dhX + 22},40 ${dhX + 31},60 ${dhX + 31},90`, "#0B8CC4");
@@ -131,7 +121,7 @@ if (!svg) return;
     ellipse.setAttribute("rx", "13");
     ellipse.setAttribute("ry", "4");
     ellipse.setAttribute("fill", "#0B8CC4");
-    svg.appendChild(ellipse);
+    svgEl.appendChild(ellipse);
     windows(410, 26, 26, 60, "rgba(255,255,255,0.35)");
     
     // City Hall-style tiered top
@@ -167,60 +157,69 @@ if (!svg) return;
   }
 
   async function generateSql() {
-    setNlLoading(true);
-    setNlError(null);
-    setNlAnswer(null);
+  setSqlLoading(true);
+  setSqlError(null);
 
-    try {
-      const res = await fetch(`${API_BASE}/generate-sql`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: nlQuestion }),
-      });
+  try {
+    const res = await fetch(`${API_BASE}/generate-sql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: sqlQuestion }),
+    });
 
-      const data = await res.json();
+    const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.detail || "Could not generate SQL");
-      }
-
-      if (data.sql) {
-        setQuery(data.sql);
-      } else {
-        setNlError(data.message || "This doesn't look like a data question.");
-      }
-    } catch (err) {
-      setNlError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setNlLoading(false);
+    if (!res.ok) {
+      throw new Error(data.detail || "Could not generate SQL");
     }
-  }
 
-  async function getAnswer() {
-    setNlLoading(true);
-    setNlError(null);
-    setNlAnswer(null);
-
-    try {
-      const res = await fetch(`${API_BASE}/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: nlQuestion }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.detail || "Could not answer that question");
-      }
-
-      setNlAnswer(data);
-    } catch (err) {
-      setNlError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setNlLoading(false);
+    if (data.sql) {
+      setQuery(data.sql);
+    } else {
+      setSqlError(data.message || "This doesn't look like a data question.");
     }
+  } catch (err) {
+    setSqlError(err instanceof Error ? err.message : "Something went wrong");
+  } finally {
+    setSqlLoading(false);
   }
+}
+async function getAnswer() {
+  setAnswerLoading(true);
+  setAnswerError(null);
+  setAnswerResult(null);
+
+  try {
+    const res = await fetch(`${API_BASE}/answer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: answerQuestion }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.detail || "Could not answer that question");
+    }
+
+    setAnswerResult(data);
+  } catch (err) {
+    setAnswerError(err instanceof Error ? err.message : "Something went wrong");
+  } finally {
+    setAnswerLoading(false);
+  }
+}
+
+function clearSqlQuestion() {
+  setSqlQuestion("");
+  setSqlError(null);
+}
+
+function clearAnswerQuestion() {
+  setAnswerQuestion("");
+  setAnswerResult(null);
+  setAnswerError(null);
+}
 
   function clearQuery() {
     setQuery("");
@@ -240,11 +239,20 @@ if (!svg) return;
     <li>PIT Count</li>
     <li>Housing Inventory Count</li>
     <li>311 Encampment Requests</li>
-    <li>Homeless Student Enrollment</li>
+    <li>
+  Homeless Student Enrollment
+  <a
+    href="/data-dictionaries/homeless_students_data_dictionary.xlsx"
+    download
+    className="ml-2 inline-flex items-center text-zinc-300 hover:text-blue-400"
+  >
+    <FileSpreadsheet size={16} />
+  </a>
+</li>
     <li>Homelessness Expense Tracker</li>
   </ul>
 </aside>
-            <div className="flex-1 flex flex-col h-screen overflow-hidden">
+            <div className="flex-1 flex flex-col h-screen overflow-y-auto">
         <div style={{ padding: "12px 24px 0", position: "relative", height: "175px", overflow: "hidden" }}>
         <div style={{ maxWidth: "360px", position: "relative", zIndex: 2, marginTop: "16px" }}>
   <div className="flex items-center gap-2" style={{ marginBottom: "4px" }}>
@@ -254,7 +262,7 @@ if (!svg) return;
     </span>
   </div>
   <p style={{ color: "#8a8d92", fontSize: "14px", margin: 0, lineHeight: 1.5 }}>
-    A Modern Data Architecture for LA Homelessness Data
+    AI Platform for LA Homelessness Research
   </p>
 </div>
         <svg
@@ -268,143 +276,77 @@ if (!svg) return;
   aria-hidden="true"
   />
       </div>
-      <nav className="border-b border-zinc-800 flex items-center justify-end px-6 py-0">
-        <div className="flex gap-1">
-          <button
-            onClick={() => setActiveTab("query")}
-            className={`px-3 py-1.5 text-xs uppercase tracking-wide ${
-              activeTab === "query"
-                ? "text-amber-400 border-b-2 border-amber-500"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
-            Query
-          </button>
-          <button
-            onClick={() => setActiveTab("dictionary")}
-            className={`px-3 py-1.5 text-xs uppercase tracking-wide ${
-              activeTab === "dictionary"
-                ? "text-amber-400 border-b-2 border-amber-500"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
-            Data Dictionary
-          </button>
-          <button
-            onClick={() => setActiveTab("about")}
-            className={`px-3 py-1.5 text-xs uppercase tracking-wide ${
-              activeTab === "about"
-                ? "text-amber-400 border-b-2 border-amber-500"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
-          >
-            About
-          </button>
-        </div>
-      </nav>
-      {activeTab === "dictionary" && (
-        <div className="p-6 max-w-4xl">
-          {schemaError && <p className="text-red-400 text-sm">{schemaError}</p>}
-          {!schema && !schemaError && <p className="text-zinc-500 text-sm">Loading...</p>}
-          {schema &&
-            schema.groups.map((group) => {
-              const isOpen = expandedGroup === group.source;
-              return (
-                <div key={group.source} className="mb-2 border border-zinc-800">
-                  <button
-                    onClick={() => setExpandedGroup(isOpen ? null : group.source)}
-                    className="w-full text-left px-4 py-3 hover:bg-zinc-950 flex items-center justify-between"
-                  >
-                    <span className="text-sm text-zinc-100">{group.source}</span>
-                    <span className="text-zinc-600 text-xs">{isOpen ? "-" : "+"}</span>
-                  </button>
-                  {isOpen && (
-                    <div className="px-4 pb-4 border-t border-zinc-800">
-                      <p className="text-xs text-zinc-500 py-3 leading-relaxed">
-                        {group.description}
-                      </p>
-                      {group.tables.map((table) => (
-                        <div key={table.name} className="mb-4">
-                          <p className="text-sm text-zinc-200 mb-1">{table.name}</p>
-                          <p className="text-xs text-zinc-500 mb-2">{table.description}</p>
-                          <div className="border border-zinc-800">
-                            {table.columns.map((c) => (
-                              <div
-                                key={c.column}
-                                className="flex items-start justify-between px-3 py-1.5 border-b border-zinc-900 last:border-0"
-                              >
-                                <span className="text-xs text-zinc-300 w-40 shrink-0">{c.column}</span>
-                                <span className="text-[11px] text-zinc-600 w-20 shrink-0">{c.type}</span>
-                                <span className="text-[11px] text-zinc-500 flex-1">
-                                  {c.description}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-       </div>
-      )}
-      {activeTab === "about" && (
-        <div className="p-6 max-w-2xl">
-          <p className="text-zinc-300 text-base leading-relaxed mb-3">
-            Open Civic AI is an open-source data platform designed to help
-            facilitate research of the Los Angeles homelessness crisis.
-          </p>
-          <ul className="text-zinc-300 text-base leading-relaxed space-y-1.5 mb-4 pl-8 list-disc marker:text-zinc-600">
-            <li>6 data sources are available with the most recently published data.</li>
-            <li>A medallion architecture supports high data quality.</li>
-            <li>A modern database design that's well-suited for ML/AI work.</li>
-          </ul>
-        </div>
-      )}
-      {activeTab === "query" && (
-        <div className="flex-1 flex flex-col p-6 overflow-hidden">
+      
+        <div className="flex-1 flex flex-col p-6 overflow-y-auto">
   <div className="flex-1" />
           
           <div className="space-y-3">
-            <div className="mb-3">
-              <input
-                type="text"
-                value={nlQuestion}
-                onChange={(e) => setNlQuestion(e.target.value)}
-                placeholder="Ask a question about the data, or how this platform works"
-                className="w-full bg-zinc-900 border border-zinc-700 text-zinc-200 px-3 py-2 text-sm mb-2"
-              />
-              <div className="flex gap-2">
-                <Button onClick={generateSql} disabled={nlLoading || !nlQuestion} className={BTN}>
-                  {nlLoading ? "..." : "Generate SQL"}
-                </Button>
-                <Button
-                  onClick={getAnswer}
-                  disabled={nlLoading || !nlQuestion}
-                  variant="outline"
-                  className="rounded-none border-zinc-700 text-zinc-500 hover:bg-zinc-900 text-xs uppercase tracking-wide"
-                >
-                  {nlLoading ? "..." : "Get answer"}
-                </Button>
-              </div>
-              {nlError && (
-                <p className="text-xs text-red-400 mt-2">{nlError}</p>
-              )}
-              {nlAnswer && (
-                <div className="mt-2 text-sm text-zinc-200 border border-zinc-700 p-3">
-                  {nlAnswer.answer}
+           <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="border border-zinc-700 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-amber-400 mb-2">Generate SQL</p>
+                <textarea
+                  value={sqlQuestion}
+                  onChange={(e) => setSqlQuestion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (sqlQuestion) generateSql();
+                    }
+                  }}
+                  placeholder="Ask a question about the data"
+                  rows={2}
+                  className="w-full bg-zinc-900 border border-zinc-700 text-zinc-200 px-2 py-1.5 text-xs mb-2 resize-none"
+                />
+                <div className="flex gap-2">
+                  <Button onClick={generateSql} disabled={sqlLoading || !sqlQuestion} className={BTN}>
+                    {sqlLoading ? "..." : "Generate SQL"}
+                  </Button>
+                  <Button onClick={clearSqlQuestion} variant="outline" className={BTN}>
+                    Clear Question
+                  </Button>
                 </div>
-              )}
+                {sqlError && <p className="text-xs text-red-400 mt-2">{sqlError}</p>}
+              </div>
+
+              <div className="border border-zinc-700 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-amber-400 mb-2">Ask about the platform</p>
+                <textarea
+                  value={answerQuestion}
+                  onChange={(e) => setAnswerQuestion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (answerQuestion) getAnswer();
+                    }
+                  }}
+                  placeholder="Ask how this platform works"
+                  rows={2}
+                  className="w-full bg-zinc-900 border border-zinc-700 text-zinc-200 px-2 py-1.5 text-xs mb-2 mt-2 resize-none"
+                />
+                            <div className="flex gap-2">
+                  <Button onClick={getAnswer} disabled={answerLoading || !answerQuestion} className={BTN}>
+                    {answerLoading ? "..." : "Get answer"}
+                  </Button>
+                  <Button onClick={clearAnswerQuestion} variant="outline" className={BTN}>
+                    Clear Question
+                  </Button>
+                </div>
+                {answerError && <p className="text-xs text-red-400 mt-2">{answerError}</p>}
+                {answerResult && (
+                  <div className="mt-2 text-xs text-zinc-200 border border-zinc-800 p-2">
+                    {answerResult.answer}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="border border-zinc-700 overflow-hidden">
+                       <div className="border border-zinc-700 overflow-hidden">
               <CodeMirror
                 value={query}
                 height="80px"
                 theme={vscodeDark}
                 extensions={[sql()]}
                 onChange={(value) => setQuery(value)}
+                basicSetup={{ foldGutter: false }}
                 style={{ fontSize: "13.5px" }}
               />
             </div>
@@ -439,7 +381,7 @@ if (!svg) return;
                   {result.row_count} row{result.row_count !== 1 ? "s" : ""}
                   {result.truncated ? " (truncated at the row limit)" : ""}
                 </p>
-                <div className="border border-zinc-700 overflow-x-auto max-h-72 w-full">
+                <div className="border border-zinc-700 overflow-auto max-h-72 w-full">
                   <Table>
                     <TableHeader>
                       <TableRow className="border-zinc-800 hover:bg-transparent">
@@ -471,7 +413,6 @@ if (!svg) return;
             )}
           </div>
         </div>
- )}
       </div>
     </div>
   );
