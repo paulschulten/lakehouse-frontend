@@ -19,10 +19,11 @@
   const API_BASE = "http://localhost:8000";
 
   type QueryResult = {
-    row_count: number;
-    truncated?: boolean;
-    rows: Record<string, unknown>[];
-  };
+  row_count: number;
+  truncated?: boolean;
+  total_count?: number | null;
+  rows: Record<string, unknown>[];
+};
 
   function downloadCsv(columns: string[], rows: Record<string, unknown>[]) {
     const escape = (val: unknown) => {
@@ -131,6 +132,32 @@
       rect(592, 10, 10, 10, "#0B8CC4");
       windows(584, 36, 26, 50, "rgba(255,255,255,0.35)");
     }, []);
+
+    async function exportFullCsv() {
+  try {
+    const res = await fetch(`${API_BASE}/query/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sql: query }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.detail || "Export failed");
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "query_export.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    setError(err instanceof Error ? err.message : "Something went wrong exporting");
+  }
+}
+
     async function runQuery() {
       setLoading(true);
       setError(null);
@@ -364,7 +391,7 @@
                     <Button onClick={clearResults} variant="outline" className={BTN}>
                       Clear results
                     </Button>
-                    <Button onClick={() => downloadCsv(columns, result.rows)} variant="outline" className={BTN}>
+                    <Button onClick={exportFullCsv} variant="outline" className={BTN}>
                       Export CSV
                     </Button>
                   </>
@@ -378,10 +405,13 @@
 
               {result && (
                 <div className="space-y-1">
-                  <p className="text-[11px] text-zinc-600">
-                    {result.row_count} row{result.row_count !== 1 ? "s" : ""}
-                    {result.truncated ? " (truncated at the row limit)" : ""}
-                  </p>
+
+                 <p className="text-[11px] text-zinc-600">
+  {result.truncated && result.total_count
+    ? `Showing ${result.row_count} of ${result.total_count} rows. Please export for a full list of rows.`
+    : `${result.row_count} row${result.row_count !== 1 ? "s" : ""}`}
+</p>
+
                   <div className="border border-zinc-700 overflow-auto max-h-72 w-full">
                     <Table>
                       <TableHeader>
