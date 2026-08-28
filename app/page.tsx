@@ -16,7 +16,7 @@
   } from "@/components/ui/table";
   import { FileSpreadsheet } from "lucide-react";
 
-  const API_BASE = "http://localhost:8000";
+  const API_BASE = "https://fpcu8nor9c.execute-api.us-east-2.amazonaws.com/prod";
 
   type QueryResult = {
   row_count: number;
